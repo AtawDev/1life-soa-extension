@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "1Life SOA Diagnosis Filter",
+  "short_name": "1Life Filter",
+  "version": "1.4.1",
+  "description": "Detects patients with No Diagnosis or Zero Total Amount vs Cleared/Diagnosed in 1Life Statement of Account PDFs (blob:https://1life.ph), exports filtered PDFs to a new tab, and converts 1:1 to Microsoft Word (.docx).",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://1life.ph/*",
+    "https://*.1life.ph/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "1Life SOA Diagnosis Filter",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://1life.ph/*",
+        "https://*.1life.ph/*"
+      ],
+      "js": [
+        "content/blob-interceptor.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://1life.ph/*",
+        "https://*.1life.ph/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://1life.ph/*",
+        "https://*.1life.ph/*"
+      ],
+      "js": [
+        "content/pdf-overlay.js"
+      ],
+      "run_at": "document_idle",
+      "match_origin_as_fallback": true
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self' blob:;"
+  }
+}

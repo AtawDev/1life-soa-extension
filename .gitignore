@@ -1,0 +1,12 @@
+# Prevent accidentally committing patient documents or exports
+*.pdf
+*.docx
+*.doc
+*.csv
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+node_modules/
