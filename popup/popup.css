@@ -81,6 +81,23 @@ body.tab-mode .app {
   display: none !important;
 }
 
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+:where(button, select, input):focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
 /* Header */
 .header {
   display: flex;
@@ -143,7 +160,6 @@ body.tab-mode .app {
   border-radius: 5px;
   padding: 2px 6px;
   max-width: 250px;
-  outline: none;
 }
 
 .header-actions {
@@ -235,12 +251,12 @@ body.tab-mode .app {
   border-radius: 7px;
   font-size: 12px;
   color: var(--text);
-  outline: none;
 }
 
-.field-group input:focus {
+.field-group input:focus-visible {
   border-color: var(--teal);
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.14);
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
 }
 
 .settings-actions {
@@ -248,6 +264,38 @@ body.tab-mode .app {
   align-items: center;
   justify-content: space-between;
   margin-top: 2px;
+}
+
+.settings-privacy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.privacy-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.btn-danger-link {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--rose-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.btn-danger-link:hover {
+  color: var(--rose);
 }
 
 .btn-link {
@@ -366,6 +414,11 @@ body.tab-mode .app {
   margin-top: 8px;
   width: 100%;
   max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font: inherit;
   border: 1.5px dashed var(--border-strong);
   border-radius: 10px;
   background: var(--surface);
@@ -650,12 +703,12 @@ body.tab-mode .app {
   background: var(--surface);
   font-size: 12px;
   color: var(--text);
-  outline: none;
 }
 
-.search-input:focus {
+.search-input:focus-visible {
   border-color: var(--teal);
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
 }
 
 /* Patient List */
@@ -913,4 +966,18 @@ body.tab-mode .patient-list {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
   z-index: 999;
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.5s;
+  }
+  .progress-fill,
+  .icon-btn,
+  .btn-export,
+  .filter-tab,
+  .dropzone,
+  .patient-row {
+    transition: none;
+  }
 }

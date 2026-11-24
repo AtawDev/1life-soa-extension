@@ -385,8 +385,12 @@ export function classifyImpression(rawImpression, options = DEFAULT_FILTER_OPTIO
   }
 
   // Case 2: Matches configured "No Diagnosis" phrases (default: ["no diagnosis"])
-  const phrases = (opts.noDiagnosisPhrases || ['no diagnosis'])
-    .map((p) => cleanSpaces(p))
+  const rawPhrases = Array.isArray(opts.noDiagnosisPhrases)
+    ? opts.noDiagnosisPhrases
+    : ['no diagnosis'];
+  const phrases = rawPhrases
+    .slice(0, 30)
+    .map((p) => cleanSpaces(p).slice(0, 120))
     .filter(Boolean);
 
   for (const phrase of phrases) {

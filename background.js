@@ -4,15 +4,29 @@
  */
 
 import {
+  MAX_PDF_BYTES,
   base64ToUint8,
   isOneLifeBlobUrl,
   isOneLifeOriginUrl,
   isPdfBytes,
 } from './shared/binary.js';
-import { getCapturedPdf, saveCapturedPdf } from './shared/db.js';
+import { clearAllPdfs, getCapturedPdf, saveCapturedPdf } from './shared/db.js';
 
 const SESSION_META_KEY = 'blobMetaRegistry';
-const scannedTabs = new Map(); // tabId -> { blobUrl, noDiagnosisCount }
+const SESSION_SCANNED_KEY = 'scannedTabsRegistry';
+const MAX_BASE64_LENGTH = Math.ceil((MAX_PDF_BYTES * 4) / 3) + 64;
+
+function isExtensionPageSender(sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  const baseUrl = chrome.runtime.getURL('');
+  return typeof sender.url === 'string' && sender.url.startsWith(baseUrl);
+}
+
+function isOneLifeSender(sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  const senderUrl = sender.url || (sender.tab && sender.tab.url) || '';
+  return isOneLifeOriginUrl(senderUrl) || isOneLifeBlobUrl(senderUrl);
+}
 
 async function getBlobMetaRegistry() {
   try {
@@ -41,25 +55,46 @@ async function saveBlobMeta(blobUrl, meta) {
   }
 }
 
-function sendTabMessage(tabId, message, options = undefined) {
-  return new Promise((resolve) => {
-    try {
-      const cb = (resp) => {
-        if (chrome.runtime.lastError) {
-          resolve(null);
-        } else {
-          resolve(resp || null);
-        }
-      };
-      if (options) {
-        chrome.tabs.sendMessage(tabId, message, options, cb);
-      } else {
-        chrome.tabs.sendMessage(tabId, message, cb);
-      }
-    } catch {
-      resolve(null);
+async function getScannedTabsRegistry() {
+  try {
+    const data = await chrome.storage.session.get(SESSION_SCANNED_KEY);
+    return data[SESSION_SCANNED_KEY] || {};
+  } catch {
+    return {};
+  }
+}
+
+async function setScannedTabEntry(tabId, entry) {
+  try {
+    const registry = await getScannedTabsRegistry();
+    registry[String(tabId)] = entry;
+    await chrome.storage.session.set({ [SESSION_SCANNED_KEY]: registry });
+  } catch {
+    // Non-fatal
+  }
+}
+
+async function deleteScannedTabEntry(tabId) {
+  try {
+    const registry = await getScannedTabsRegistry();
+    if (Object.prototype.hasOwnProperty.call(registry, String(tabId))) {
+      delete registry[String(tabId)];
+      await chrome.storage.session.set({ [SESSION_SCANNED_KEY]: registry });
     }
-  });
+  } catch {
+    // Non-fatal
+  }
+}
+
+async function sendTabMessage(tabId, message, options = undefined) {
+  try {
+    const resp = options
+      ? await chrome.tabs.sendMessage(tabId, message, options)
+      : await chrome.tabs.sendMessage(tabId, message);
+    return resp || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -68,11 +103,23 @@ function sendTabMessage(tabId, message, options = undefined) {
  */
 async function injectedFetchBlobAsBase64(targetBlobUrl) {
   try {
+    if (typeof targetBlobUrl !== 'string' || !targetBlobUrl.startsWith('blob:https://')) {
+      return { ok: false, error: 'Invalid blob URL' };
+    }
+    const innerUrl = new URL(targetBlobUrl.slice('blob:'.length));
+    const selfUrl = new URL(window.location.href);
+    if (selfUrl.origin === 'null' || innerUrl.origin !== selfUrl.origin) {
+      return { ok: false, error: 'Blob origin mismatch' };
+    }
+
     const res = await fetch(targetBlobUrl);
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status}` };
     }
     const buf = await res.arrayBuffer();
+    if (buf.byteLength > 60 * 1024 * 1024) {
+      return { ok: false, error: 'PDF exceeds maximum allowed size (60 MB)' };
+    }
     const bytes = new Uint8Array(buf);
     const chunkSize = 0x8000;
     const chunks = [];
@@ -226,7 +273,8 @@ async function acquireBlobPdf(blobUrl, pdfTabId = null) {
 async function updateTabBadgeForUrl(tabId, url) {
   if (tabId == null) return;
   if (isOneLifeBlobUrl(url)) {
-    const prev = scannedTabs.get(tabId);
+    const scannedRegistry = await getScannedTabsRegistry();
+    const prev = scannedRegistry[String(tabId)];
     if (prev && prev.blobUrl === url) return; // Preserve exact scan count badge
     try {
       await chrome.action.setBadgeText({ tabId, text: 'SOA' });
@@ -235,7 +283,7 @@ async function updateTabBadgeForUrl(tabId, url) {
       // Tab may have closed
     }
   } else {
-    scannedTabs.delete(tabId);
+    await deleteScannedTabEntry(tabId);
     try {
       await chrome.action.setBadgeText({ tabId, text: '' });
     } catch {
@@ -243,6 +291,15 @@ async function updateTabBadgeForUrl(tabId, url) {
     }
   }
 }
+
+// Clear locally cached patient PDFs on browser startup for shared-workstation privacy
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    await clearAllPdfs();
+  } catch {
+    // Non-fatal
+  }
+});
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   const url = changeInfo.url || (tab && tab.url);
@@ -255,7 +312,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab) {
-      updateTabBadgeForUrl(tabId, tab.url);
+      await updateTabBadgeForUrl(tabId, tab.url);
     }
   } catch {
     // Ignore
@@ -263,19 +320,20 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  scannedTabs.delete(tabId);
+  deleteScannedTabEntry(tabId);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || !message.type) return false;
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  if (!message || typeof message.type !== 'string') return false;
 
   switch (message.type) {
     case 'REGISTER_BLOB_META': {
-      if (message.blobUrl && isOneLifeBlobUrl(message.blobUrl)) {
+      if (isOneLifeSender(sender) && isOneLifeBlobUrl(message.blobUrl)) {
         saveBlobMeta(message.blobUrl, {
           sourceTabId: sender.tab ? sender.tab.id : null,
           sourceFrameId: sender.frameId ?? 0,
-          size: message.size || 0,
+          size: Number(message.size) || 0,
           capturedAt: Date.now(),
         });
       }
@@ -286,12 +344,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'CACHE_BLOB_PDF': {
       (async () => {
         try {
-          if (!message.blobUrl || !message.base64 || !isOneLifeBlobUrl(message.blobUrl)) {
+          if (
+            !isOneLifeSender(sender) ||
+            !isOneLifeBlobUrl(message.blobUrl) ||
+            typeof message.base64 !== 'string' ||
+            message.base64.length === 0 ||
+            message.base64.length > MAX_BASE64_LENGTH
+          ) {
             sendResponse({ ok: false, error: 'Invalid cache payload' });
             return;
           }
           const bytes = base64ToUint8(message.base64);
-          if (!isPdfBytes(bytes)) {
+          if (bytes.byteLength > MAX_PDF_BYTES || !isPdfBytes(bytes)) {
             sendResponse({ ok: false, error: 'Not a valid PDF binary' });
             return;
           }
@@ -302,31 +366,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
           sendResponse({ ok: true, size: bytes.byteLength });
         } catch (err) {
-          sendResponse({ ok: false, error: err.message });
+          sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
         }
       })();
       return true;
     }
 
     case 'ACQUIRE_BLOB_PDF': {
-      acquireBlobPdf(message.blobUrl, message.pdfTabId ?? null)
-        .then((result) => sendResponse(result))
-        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      if (!isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: 'Unauthorized sender' });
+        return false;
+      }
+      (async () => {
+        try {
+          const result = await acquireBlobPdf(message.blobUrl, message.pdfTabId ?? null);
+          sendResponse(result);
+        } catch (err) {
+          sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+        }
+      })();
       return true;
     }
 
     case 'SET_TAB_BADGE': {
+      if (!isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: 'Unauthorized sender' });
+        return false;
+      }
       (async () => {
         const { tabId, blobUrl } = message;
         const flaggedCount =
           typeof message.excludedCount === 'number'
             ? message.excludedCount
             : Number(message.noDiagnosisCount) || 0;
-        if (tabId == null) {
+        if (typeof tabId !== 'number' || !isOneLifeBlobUrl(blobUrl)) {
           sendResponse({ ok: false });
           return;
         }
-        scannedTabs.set(tabId, { blobUrl, flaggedCount });
+        await setScannedTabEntry(tabId, { blobUrl, flaggedCount });
         try {
           const text = flaggedCount > 0 ? String(flaggedCount) : 'OK';
           const color = flaggedCount > 0 ? '#d97706' : '#059669';
@@ -341,15 +418,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'OPEN_SCANNER_TAB': {
+      if (!isOneLifeSender(sender) && !isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: 'Unauthorized sender' });
+        return false;
+      }
       (async () => {
-        const params = new URLSearchParams({ mode: 'tab' });
-        if (message.blobUrl) params.set('blobUrl', message.blobUrl);
-        if (sender.tab && sender.tab.id != null) {
-          params.set('sourceTabId', String(sender.tab.id));
+        try {
+          const params = new URLSearchParams({ mode: 'tab' });
+          if (isOneLifeBlobUrl(message.blobUrl)) {
+            params.set('blobUrl', message.blobUrl);
+          }
+          if (sender.tab && typeof sender.tab.id === 'number') {
+            params.set('sourceTabId', String(sender.tab.id));
+          }
+          const url = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
+          await chrome.tabs.create({ url });
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
         }
-        const url = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
-        await chrome.tabs.create({ url });
-        sendResponse({ ok: true });
+      })();
+      return true;
+    }
+
+    case 'CLEAR_CACHE': {
+      if (!isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: 'Unauthorized sender' });
+        return false;
+      }
+      (async () => {
+        try {
+          await clearAllPdfs();
+          await chrome.storage.session.remove([SESSION_META_KEY, SESSION_SCANNED_KEY]);
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+        }
       })();
       return true;
     }

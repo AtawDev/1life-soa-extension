@@ -2,34 +2,40 @@
  * Shared binary, URL, and formatting helpers for 1Life SOA Diagnosis Filter.
  */
 
+export const MAX_PDF_BYTES = 60 * 1024 * 1024; // 60 MB safety cap
+
+const ONELIFE_REFERENCE_URL = 'https://1life.ph';
+const ONELIFE_DOMAIN = '1life.ph';
+
 export const ONELIFE_BLOB_PREFIXES = [
   'blob:https://1life.ph/',
   'blob:https://www.1life.ph/',
 ];
 
-export function isOneLifeBlobUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('blob:https://')) {
-    return false;
-  }
+export function isOneLifeOriginUrl(url) {
+  if (typeof url !== 'string' || !url) return false;
   try {
-    const inner = new URL(url.slice('blob:'.length));
-    const host = inner.hostname.toLowerCase();
-    return host === '1life.ph' || host.endsWith('.1life.ph');
+    if ('Origin' in globalThis && typeof globalThis.Origin?.from === 'function') {
+      const candidateOrigin = globalThis.Origin.from(url);
+      if (candidateOrigin.opaque) return false;
+      const trustedOrigin = globalThis.Origin.from(ONELIFE_REFERENCE_URL);
+      return candidateOrigin.isSameSite(trustedOrigin);
+    }
+    const parsed = new URL(url);
+    if (parsed.origin === 'null' || parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === ONELIFE_DOMAIN || host.endsWith(`.${ONELIFE_DOMAIN}`);
   } catch {
     return false;
   }
 }
 
-export function isOneLifeOriginUrl(url) {
-  if (typeof url !== 'string') return false;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname.toLowerCase();
-    return host === '1life.ph' || host.endsWith('.1life.ph');
-  } catch {
+export function isOneLifeBlobUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('blob:https://')) {
     return false;
   }
+  const inner = url.slice('blob:'.length);
+  return isOneLifeOriginUrl(inner);
 }
 
 export function shortBlobId(url) {
@@ -91,7 +97,12 @@ export function formatBytes(bytes) {
 }
 
 export function escapeCsvCell(val) {
-  const s = String(val ?? '');
+  let s = String(val ?? '');
+  // Neutralize spreadsheet formula injection (=, +, -, @, tab, CR) unless plain signed numeric value
+  const isPlainNumber = /^[+-]?\d+(?:,\d{3})*(?:\.\d+)?$/.test(s.trim());
+  if (!isPlainNumber && /^(?:[\t\r]|[ \t\r\n]*[=+\-@])/.test(s)) {
+    s = `'${s}`;
+  }
   if (/[",\r\n]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }

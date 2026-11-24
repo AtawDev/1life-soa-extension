@@ -4,6 +4,7 @@
 
 import * as pdfjsLib from '../lib/pdf.min.mjs';
 import {
+  MAX_PDF_BYTES,
   buildExportFilename,
   escapeCsvCell,
   formatBytes,
@@ -13,6 +14,7 @@ import {
   shortBlobId,
 } from '../shared/binary.js';
 import {
+  clearAllPdfs,
   getCapturedPdf,
   listCapturedPdfs,
   saveExportedPdf,
@@ -60,10 +62,12 @@ const els = {
   optPhrases: document.getElementById('opt-phrases'),
   btnResetSettings: document.getElementById('btn-reset-settings'),
   btnApplySettings: document.getElementById('btn-apply-settings'),
+  btnClearCache: document.getElementById('btn-clear-cache'),
 
   loadingView: document.getElementById('loading-view'),
   loadingTitle: document.getElementById('loading-title'),
   loadingSub: document.getElementById('loading-sub'),
+  progressTrack: document.getElementById('progress-track'),
   progressBar: document.getElementById('progress-bar'),
 
   emptyView: document.getElementById('empty-view'),
@@ -129,10 +133,20 @@ function showEmptyState({ title, message, isError = false }) {
 }
 
 function setLoading(title, sub, pct = 15) {
+  const clamped = Math.max(5, Math.min(100, Math.round(pct)));
   els.loadingTitle.textContent = title;
   els.loadingSub.textContent = sub;
-  els.progressBar.style.width = `${Math.max(5, Math.min(100, pct))}%`;
+  els.progressBar.style.width = `${clamped}%`;
+  if (els.progressTrack) {
+    els.progressTrack.setAttribute('aria-valuenow', String(clamped));
+  }
   showView('loading');
+}
+
+function setSettingsOpen(open) {
+  els.settingsPanel.classList.toggle('hidden', !open);
+  els.btnSettings.classList.toggle('active', open);
+  els.btnSettings.setAttribute('aria-expanded', String(open));
 }
 
 function formatPagesLabel(pages) {
@@ -253,15 +267,19 @@ function renderResults() {
 
   // Update tab badge if we have a source PDF tab
   if (state.activeSource && state.activeSource.tabId != null && state.activeSource.blobUrl) {
-    chrome.runtime
-      .sendMessage({
-        type: 'SET_TAB_BADGE',
-        tabId: state.activeSource.tabId,
-        blobUrl: state.activeSource.blobUrl,
-        noDiagnosisCount: noDiag.length,
-        excludedCount,
-      })
-      .catch(() => {});
+    (async () => {
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'SET_TAB_BADGE',
+          tabId: state.activeSource.tabId,
+          blobUrl: state.activeSource.blobUrl,
+          noDiagnosisCount: noDiag.length,
+          excludedCount,
+        });
+      } catch {
+        // Ignore if service worker restarted or tab closed
+      }
+    })();
   }
 
   // Warning if PDF had no selectable text layer
@@ -451,8 +469,7 @@ async function saveSettingsFromInputs() {
     renderResults();
     showToast('Updated detection rules');
   }
-  els.settingsPanel.classList.add('hidden');
-  els.btnSettings.classList.remove('active');
+  setSettingsOpen(false);
 }
 
 function updateSourceHeader() {
@@ -708,11 +725,17 @@ async function handleExport(category) {
     cleared: els.btnExportCleared,
   };
   const btn = btnMap[category] || els.btnExportCleared;
-  const originalHtml = btn.innerHTML;
+  const labelSpan = btn.querySelector('span');
+  const originalLabel = labelSpan ? labelSpan.textContent : btn.textContent;
   els.btnExportNoDiag.disabled = true;
   els.btnExportZeroAmt.disabled = true;
   els.btnExportCleared.disabled = true;
-  btn.textContent = 'Building PDF...';
+  els.btnNoDiagWord.disabled = true;
+  if (labelSpan) {
+    labelSpan.textContent = 'Building PDF...';
+  } else {
+    btn.textContent = 'Building PDF...';
+  }
 
   try {
     const labelMap = {
@@ -742,25 +765,6 @@ async function handleExport(category) {
       id: exportId,
       bytes,
       filename,
-      category,
-      title,
-      sourceUrl: state.activeSource ? state.activeSource.blobUrl || state.activeSource.label : '',
-      patientCount,
-      pageCount,
-      patients: matching.map((p) => ({
-        index: p.index,
-        patientName: p.patientName,
-        ageSex: p.ageSex,
-        clinicalImpression: p.clinicalImpression,
-        pages: p.pages,
-        totalAmount: p.totalAmount,
-        totalAmountValue: p.totalAmountValue,
-        hasNoDiagnosis: p.hasNoDiagnosis,
-        hasZeroAmount: p.hasZeroAmount,
-        isCleared: p.isCleared,
-        category: p.category,
-        reason: p.reason,
-      })),
       createdAt: Date.now(),
     });
 
@@ -771,16 +775,28 @@ async function handleExport(category) {
     showToast(`Opened ${patientCount} patients (${pageCount} pages) in new tab`);
   } catch (err) {
     console.error('[1Life SOA Filter] Export error:', err);
-    showToast(`Export failed: ${err.message || err}`);
+    showToast(`Export failed: ${err && err.message ? err.message : err}`);
   } finally {
     state.busy = false;
-    btn.innerHTML = originalHtml;
+    if (labelSpan) {
+      labelSpan.textContent = originalLabel;
+    } else {
+      btn.textContent = originalLabel;
+    }
     renderResults();
   }
 }
 
 async function handleLocalFile(file) {
   if (!file) return;
+  if (file.size > MAX_PDF_BYTES) {
+    showEmptyState({
+      title: 'File Too Large',
+      message: `The selected file exceeds the ${formatBytes(MAX_PDF_BYTES)} safety limit.`,
+      isError: true,
+    });
+    return;
+  }
   try {
     setLoading('Reading local PDF...', file.name, 10);
     const buf = await file.arrayBuffer();
@@ -803,7 +819,34 @@ async function handleLocalFile(file) {
   }
 }
 
-function handleCopyList() {
+async function handleClearCache() {
+  try {
+    try {
+      await chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' });
+    } catch {
+      await clearAllPdfs();
+    }
+    state.sources = [];
+    state.activeSource = null;
+    state.pdfBytes = null;
+    state.totalPages = 0;
+    state.patients = [];
+    state.manualOverrides.clear();
+    updateSourceHeader();
+    setSettingsOpen(false);
+    showEmptyState({
+      title: 'Local Cache Cleared',
+      message:
+        'All locally cached PDFs have been deleted from this browser. Open a Statement of Account PDF or drop a local PDF file below to scan again.',
+      isError: false,
+    });
+    showToast('Cleared all locally cached PDFs');
+  } catch (err) {
+    showToast(`Could not clear cache: ${err && err.message ? err.message : err}`);
+  }
+}
+
+async function handleCopyList() {
   const visible = getFilteredPatients();
   if (visible.length === 0) {
     showToast('No patients to copy');
@@ -815,10 +858,12 @@ function handleCopyList() {
     const amt = p.totalAmount !== '' ? `₱${p.totalAmount}` : '';
     return `${formatPagesLabel(p.pages)}\t${p.patientName}\t${imp}\t${amt}\t${status}`;
   });
-  navigator.clipboard
-    .writeText(lines.join('\n'))
-    .then(() => showToast(`Copied ${visible.length} patients to clipboard`))
-    .catch(() => showToast('Could not copy to clipboard'));
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    showToast(`Copied ${visible.length} patients to clipboard`);
+  } catch {
+    showToast('Could not copy to clipboard');
+  }
 }
 
 function handleDownloadCsv() {
@@ -931,12 +976,6 @@ function bindEvents() {
   });
 
   els.dropzone.addEventListener('click', () => els.fileInput.click());
-  els.dropzone.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      els.fileInput.click();
-    }
-  });
   els.dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
     els.dropzone.classList.add('drag-over');
@@ -953,8 +992,7 @@ function bindEvents() {
 
   els.btnSettings.addEventListener('click', () => {
     const willOpen = els.settingsPanel.classList.contains('hidden');
-    els.settingsPanel.classList.toggle('hidden', !willOpen);
-    els.btnSettings.classList.toggle('active', willOpen);
+    setSettingsOpen(willOpen);
   });
 
   els.btnApplySettings.addEventListener('click', saveSettingsFromInputs);
@@ -963,6 +1001,9 @@ function bindEvents() {
     syncSettingsInputs();
     saveSettingsFromInputs();
   });
+  if (els.btnClearCache) {
+    els.btnClearCache.addEventListener('click', handleClearCache);
+  }
 
   els.btnPopout.addEventListener('click', () => {
     const params = new URLSearchParams({ mode: 'tab' });
@@ -985,15 +1026,31 @@ function bindEvents() {
     }
   });
 
-  for (const tabBtn of els.filterTabs) {
-    tabBtn.addEventListener('click', () => {
-      state.activeFilter = tabBtn.dataset.filter;
-      for (const b of els.filterTabs) {
-        const isActive = b === tabBtn;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-selected', String(isActive));
+  function activateFilterTab(tabBtn, { focus = false } = {}) {
+    state.activeFilter = tabBtn.dataset.filter;
+    for (const b of els.filterTabs) {
+      const isActive = b === tabBtn;
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-selected', String(isActive));
+      b.setAttribute('tabindex', isActive ? '0' : '-1');
+    }
+    if (focus) tabBtn.focus();
+    renderResults();
+  }
+
+  for (let i = 0; i < els.filterTabs.length; i++) {
+    const tabBtn = els.filterTabs[i];
+    tabBtn.addEventListener('click', () => activateFilterTab(tabBtn));
+    tabBtn.addEventListener('keydown', (e) => {
+      let nextIdx = null;
+      if (e.key === 'ArrowRight') nextIdx = (i + 1) % els.filterTabs.length;
+      else if (e.key === 'ArrowLeft') nextIdx = (i - 1 + els.filterTabs.length) % els.filterTabs.length;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = els.filterTabs.length - 1;
+      if (nextIdx !== null) {
+        e.preventDefault();
+        activateFilterTab(els.filterTabs[nextIdx], { focus: true });
       }
-      renderResults();
     });
   }
 

@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "1Life SOA Diagnosis Filter",
   "short_name": "1Life Filter",
-  "version": "1.4.1",
-  "description": "Detects patients with No Diagnosis or Zero Total Amount vs Cleared/Diagnosed in 1Life Statement of Account PDFs (blob:https://1life.ph), exports filtered PDFs to a new tab, and converts 1:1 to Microsoft Word (.docx).",
+  "version": "1.4.2",
+  "minimum_chrome_version": "119",
+  "description": "Filter 1Life Statement of Account PDFs by missing diagnosis or zero total amount, export clean PDFs, or convert to Word (.docx).",
   "permissions": [
     "tabs",
     "scripting",
@@ -70,6 +71,6 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self' blob:;"
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none';"
   }
 }

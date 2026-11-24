@@ -9,8 +9,9 @@ const STORE_CAPTURED = 'capturedPdfs';
 const STORE_EXPORTS = 'exportedPdfs';
 
 const MAX_CAPTURED = 8;
-const MAX_EXPORTS = 15;
-const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_EXPORTS = 10;
+const MAX_CAPTURED_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_EXPORT_AGE_MS = 15 * 60 * 1000; // 15 minutes
 
 let dbPromise = null;
 
@@ -29,7 +30,14 @@ function openDb() {
         store.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
     req.onerror = () => {
       dbPromise = null;
       reject(req.error);
@@ -53,7 +61,7 @@ function reqPromise(req) {
   });
 }
 
-async function pruneStore(storeName, timeKey, maxCount) {
+async function pruneStore(storeName, timeKey, maxCount, maxAgeMs) {
   try {
     const db = await openDb();
     const tx = db.transaction(storeName, 'readwrite');
@@ -64,7 +72,7 @@ async function pruneStore(storeName, timeKey, maxCount) {
     all.sort((a, b) => (b[timeKey] || 0) - (a[timeKey] || 0));
     for (let i = 0; i < all.length; i++) {
       const rec = all[i];
-      const tooOld = now - (rec[timeKey] || 0) > MAX_AGE_MS;
+      const tooOld = now - (rec[timeKey] || 0) > maxAgeMs;
       const overLimit = i >= maxCount;
       if (tooOld || overLimit) {
         const key = storeName === STORE_CAPTURED ? rec.blobUrl : rec.id;
@@ -89,7 +97,7 @@ export async function saveCapturedPdf({ blobUrl, bytes, tabId = null }) {
     capturedAt: Date.now(),
   });
   await txPromise(tx);
-  await pruneStore(STORE_CAPTURED, 'capturedAt', MAX_CAPTURED);
+  await pruneStore(STORE_CAPTURED, 'capturedAt', MAX_CAPTURED, MAX_CAPTURED_AGE_MS);
 }
 
 export async function getCapturedPdf(blobUrl) {
@@ -97,12 +105,16 @@ export async function getCapturedPdf(blobUrl) {
   const tx = db.transaction(STORE_CAPTURED, 'readonly');
   const rec = await reqPromise(tx.objectStore(STORE_CAPTURED).get(blobUrl));
   if (!rec) return null;
+  if (Date.now() - (rec.capturedAt || 0) > MAX_CAPTURED_AGE_MS) {
+    return null;
+  }
   // Normalize back to Uint8Array in case structured clone returned ArrayBufferView
   const bytes = rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
   return { ...rec, bytes };
 }
 
 export async function listCapturedPdfs() {
+  await pruneStore(STORE_CAPTURED, 'capturedAt', MAX_CAPTURED, MAX_CAPTURED_AGE_MS);
   const db = await openDb();
   const tx = db.transaction(STORE_CAPTURED, 'readonly');
   const all = await reqPromise(tx.objectStore(STORE_CAPTURED).getAll());
@@ -116,13 +128,14 @@ export async function saveExportedPdf(record) {
   const uint8 = record.bytes instanceof Uint8Array ? record.bytes : new Uint8Array(record.bytes);
   const tx = db.transaction(STORE_EXPORTS, 'readwrite');
   tx.objectStore(STORE_EXPORTS).put({
-    ...record,
+    id: record.id,
     bytes: uint8,
     size: uint8.byteLength,
+    filename: record.filename || '',
     createdAt: record.createdAt || Date.now(),
   });
   await txPromise(tx);
-  await pruneStore(STORE_EXPORTS, 'createdAt', MAX_EXPORTS);
+  await pruneStore(STORE_EXPORTS, 'createdAt', MAX_EXPORTS, MAX_EXPORT_AGE_MS);
 }
 
 export async function getExportedPdf(id) {
@@ -130,6 +143,29 @@ export async function getExportedPdf(id) {
   const tx = db.transaction(STORE_EXPORTS, 'readonly');
   const rec = await reqPromise(tx.objectStore(STORE_EXPORTS).get(id));
   if (!rec) return null;
+  if (Date.now() - (rec.createdAt || 0) > MAX_EXPORT_AGE_MS) {
+    return null;
+  }
   const bytes = rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
   return { ...rec, bytes };
+}
+
+export async function deleteExportedPdf(id) {
+  if (!id) return;
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE_EXPORTS, 'readwrite');
+    tx.objectStore(STORE_EXPORTS).delete(id);
+    await txPromise(tx);
+  } catch {
+    // Non-fatal cleanup
+  }
+}
+
+export async function clearAllPdfs() {
+  const db = await openDb();
+  const tx = db.transaction([STORE_CAPTURED, STORE_EXPORTS], 'readwrite');
+  tx.objectStore(STORE_CAPTURED).clear();
+  tx.objectStore(STORE_EXPORTS).clear();
+  await txPromise(tx);
 }

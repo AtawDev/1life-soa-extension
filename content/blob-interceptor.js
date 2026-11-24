@@ -12,6 +12,45 @@
   const MAX_BLOB_BYTES = 60 * 1024 * 1024; // 60 MB safety cap
   const trackedBlobs = new Map(); // blobUrl -> { blob, size, createdAt }
 
+  function isSameOriginMessage(event) {
+    if (event.source !== window) return false;
+    try {
+      if ('Origin' in globalThis && typeof globalThis.Origin?.from === 'function') {
+        const selfOrigin = globalThis.Origin.from(self);
+        if (selfOrigin.opaque) return false;
+        let senderOrigin;
+        try {
+          senderOrigin = globalThis.Origin.from(event);
+        } catch {
+          senderOrigin = globalThis.Origin.from(event.origin);
+        }
+        return !senderOrigin.opaque && senderOrigin.isSameOrigin(selfOrigin);
+      }
+      const selfUrl = new URL(window.location.href);
+      const senderUrl = new URL(event.origin);
+      return selfUrl.origin !== 'null' && senderUrl.origin === selfUrl.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  function isSameOriginBlobUrl(url) {
+    if (typeof url !== 'string' || !url.startsWith('blob:https://')) return false;
+    try {
+      const inner = url.slice('blob:'.length);
+      if ('Origin' in globalThis && typeof globalThis.Origin?.from === 'function') {
+        const selfOrigin = globalThis.Origin.from(self);
+        const blobOrigin = globalThis.Origin.from(inner);
+        return !selfOrigin.opaque && !blobOrigin.opaque && blobOrigin.isSameOrigin(selfOrigin);
+      }
+      const selfUrl = new URL(window.location.href);
+      const innerUrl = new URL(inner);
+      return selfUrl.origin !== 'null' && innerUrl.origin === selfUrl.origin;
+    } catch {
+      return false;
+    }
+  }
+
   function pruneMap() {
     while (trackedBlobs.size > MAX_BLOBS) {
       const oldestKey = trackedBlobs.keys().next().value;
@@ -26,7 +65,9 @@
   async function inspectAndTrack(url, blob) {
     try {
       if (!blob || !(blob instanceof Blob)) return;
+      if (!isSameOriginBlobUrl(url)) return;
       if (blob.size < 5 || blob.size > MAX_BLOB_BYTES) return;
+      if (!window.location.origin || window.location.origin === 'null') return;
 
       const mime = (blob.type || '').toLowerCase();
       let isPdf = mime.includes('pdf');
@@ -87,22 +128,30 @@
 
   // Respond to isolated bridge requests for PDF binary buffers
   window.addEventListener('message', async (event) => {
-    if (event.source !== window) return;
+    if (!isSameOriginMessage(event)) return;
     const msg = event.data;
     if (!msg || msg.channel !== CHANNEL || msg.type !== 'REQUEST_PDF_BUFFER') return;
+    if (!window.location.origin || window.location.origin === 'null') return;
 
     const { requestId, blobUrl } = msg;
+    if (typeof requestId !== 'string' || !isSameOriginBlobUrl(blobUrl)) return;
+
     try {
       let buffer = null;
       const cached = trackedBlobs.get(blobUrl);
       if (cached && cached.blob) {
+        if (cached.blob.size > MAX_BLOB_BYTES) {
+          throw new Error('PDF exceeds maximum allowed size');
+        }
         buffer = await cached.blob.arrayBuffer();
-      } else if (typeof blobUrl === 'string' && blobUrl.startsWith('blob:')) {
+      } else {
         const res = await fetch(blobUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         buffer = await res.arrayBuffer();
-      } else {
-        throw new Error('Blob URL not found in page context');
+      }
+
+      if (!buffer || buffer.byteLength > MAX_BLOB_BYTES) {
+        throw new Error('PDF exceeds maximum allowed size');
       }
 
       window.postMessage(

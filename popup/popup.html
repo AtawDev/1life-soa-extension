@@ -22,27 +22,27 @@
       </div>
 
       <div class="header-actions">
-        <button id="btn-rescan" class="icon-btn" title="Rescan PDF" aria-label="Rescan PDF">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-rescan" type="button" class="icon-btn" title="Rescan PDF" aria-label="Rescan PDF">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
             <polyline points="21 3 21 9 15 9" />
           </svg>
         </button>
-        <button id="btn-upload" class="icon-btn" title="Load Local PDF File" aria-label="Load Local PDF File">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-upload" type="button" class="icon-btn" title="Load Local PDF File" aria-label="Load Local PDF File">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         </button>
-        <button id="btn-settings" class="icon-btn" title="Detection Rules" aria-label="Detection Rules">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-settings" type="button" class="icon-btn" title="Detection Rules" aria-label="Detection Rules" aria-expanded="false" aria-controls="settings-panel">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
-        <button id="btn-popout" class="icon-btn" title="Open Full View in New Tab" aria-label="Open Full View">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-popout" type="button" class="icon-btn" title="Open Full View in New Tab" aria-label="Open Full View">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 3 21 3 21 9" />
             <polyline points="9 21 3 21 3 15" />
             <line x1="21" y1="3" x2="14" y2="10" />
@@ -50,21 +50,21 @@
           </svg>
         </button>
       </div>
-      <input type="file" id="file-input" accept="application/pdf,.pdf" class="hidden" />
+      <input type="file" id="file-input" accept="application/pdf,.pdf" class="hidden" aria-label="Choose a local Statement of Account PDF file" />
     </header>
 
     <!-- Collapsible Settings Panel -->
-    <section id="settings-panel" class="settings-panel hidden">
-      <div class="settings-title">Detection Rules</div>
-      <label class="checkbox-row">
+    <section id="settings-panel" class="settings-panel hidden" aria-labelledby="settings-heading">
+      <h2 id="settings-heading" class="settings-title">Detection Rules</h2>
+      <label class="checkbox-row" for="opt-zero-total">
         <input type="checkbox" id="opt-zero-total" checked />
         <span>Exclude patients with <strong>TOTAL AMOUNT = 0</strong> from Cleared</span>
       </label>
-      <label class="checkbox-row">
+      <label class="checkbox-row" for="opt-blank">
         <input type="checkbox" id="opt-blank" checked />
         <span>Treat blank / empty Clinical Impression as <strong>No Diagnosis</strong></span>
       </label>
-      <label class="checkbox-row">
+      <label class="checkbox-row" for="opt-none-na">
         <input type="checkbox" id="opt-none-na" />
         <span>Also flag <code>None</code>, <code>N/A</code>, <code>Pending</code> as No Diagnosis</span>
       </label>
@@ -76,33 +76,37 @@
         <button id="btn-reset-settings" class="btn-link" type="button">Reset defaults</button>
         <button id="btn-apply-settings" class="btn-small-primary" type="button">Apply</button>
       </div>
+      <div class="settings-privacy">
+        <span class="privacy-note">100% local processing — no data leaves your browser. Cached PDFs auto-clear on restart.</span>
+        <button id="btn-clear-cache" class="btn-danger-link" type="button">Clear cached PDFs</button>
+      </div>
     </section>
 
     <!-- Loading / Scanning View -->
     <section id="loading-view" class="state-card hidden">
-      <div class="spinner"></div>
-      <div id="loading-title" class="state-title">Reading 1Life PDF...</div>
+      <div class="spinner" aria-hidden="true"></div>
+      <h2 id="loading-title" class="state-title">Reading 1Life PDF...</h2>
       <div id="loading-sub" class="state-sub">Inspecting Clinical Impression &amp; Total Amount</div>
-      <div class="progress-track">
+      <div id="progress-track" class="progress-track" role="progressbar" aria-label="PDF scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12">
         <div id="progress-bar" class="progress-fill" style="width: 12%"></div>
       </div>
     </section>
 
     <!-- Empty / Error View -->
     <section id="empty-view" class="state-card hidden">
-      <div id="empty-icon" class="empty-badge">PDF</div>
-      <div id="empty-title" class="state-title">No 1Life PDF Detected</div>
+      <div id="empty-icon" class="empty-badge" aria-hidden="true">PDF</div>
+      <h2 id="empty-title" class="state-title">No 1Life PDF Detected</h2>
       <p id="empty-message" class="state-sub">
         Open a Statement of Account PDF on <code>blob:https://1life.ph/...</code> and click this extension.
       </p>
-      <div id="dropzone" class="dropzone" tabindex="0" role="button">
-        <div class="dropzone-title">Drop a Statement of Account PDF here</div>
-        <div class="dropzone-sub">or click to choose a local <code>.pdf</code> file</div>
-      </div>
+      <button id="dropzone" type="button" class="dropzone">
+        <span class="dropzone-title">Drop a Statement of Account PDF here</span>
+        <span class="dropzone-sub">or click to choose a local <code>.pdf</code> file</span>
+      </button>
     </section>
 
     <!-- Warning Banner (e.g., scanned PDF with no text layer) -->
-    <div id="warning-banner" class="warning-banner hidden"></div>
+    <div id="warning-banner" class="warning-banner hidden" role="alert"></div>
 
     <!-- Main Results View -->
     <main id="results-view" class="results-view hidden">
@@ -117,9 +121,9 @@
             <span id="no-diag-count" class="metric-count">0</span>
             <span class="metric-unit">patients</span>
           </div>
-          <button id="btn-export-no-diag" class="btn-export btn-export-amber" disabled>
+          <button id="btn-export-no-diag" type="button" class="btn-export btn-export-amber" disabled>
             <span>Export No Diag</span>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <polyline points="15 3 21 3 21 9" />
               <line x1="10" y1="14" x2="21" y2="3" />
@@ -136,9 +140,9 @@
             <span id="zero-amt-count" class="metric-count">0</span>
             <span class="metric-unit">patients</span>
           </div>
-          <button id="btn-export-zero-amt" class="btn-export btn-export-rose" disabled>
+          <button id="btn-export-zero-amt" type="button" class="btn-export btn-export-rose" disabled>
             <span>Export ₱0 Total</span>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <polyline points="15 3 21 3 21 9" />
               <line x1="10" y1="14" x2="21" y2="3" />
@@ -155,9 +159,9 @@
             <span id="cleared-count" class="metric-count">0</span>
             <span class="metric-unit">patients</span>
           </div>
-          <button id="btn-export-cleared" class="btn-export btn-export-emerald" disabled>
+          <button id="btn-export-cleared" type="button" class="btn-export btn-export-emerald" disabled>
             <span>Export Cleared</span>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <polyline points="15 3 21 3 21 9" />
               <line x1="10" y1="14" x2="21" y2="3" />
@@ -171,22 +175,23 @@
 
       <!-- Filter Tabs & Search -->
       <section class="list-controls">
-        <div class="filter-tabs" role="tablist">
-          <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true">
+        <div class="filter-tabs" role="tablist" aria-label="Filter patients by category">
+          <button type="button" class="filter-tab active" data-filter="all" role="tab" aria-selected="true" aria-controls="patient-list" tabindex="0">
             All <span id="tab-all-count" class="tab-badge">0</span>
           </button>
-          <button class="filter-tab" data-filter="no_diagnosis" role="tab" aria-selected="false">
+          <button type="button" class="filter-tab" data-filter="no_diagnosis" role="tab" aria-selected="false" aria-controls="patient-list" tabindex="-1">
             No Diag <span id="tab-nodiag-count" class="tab-badge badge-amber">0</span>
           </button>
-          <button class="filter-tab" data-filter="zero_amount" role="tab" aria-selected="false">
+          <button type="button" class="filter-tab" data-filter="zero_amount" role="tab" aria-selected="false" aria-controls="patient-list" tabindex="-1">
             ₱0 Total <span id="tab-zero-count" class="tab-badge badge-rose">0</span>
           </button>
-          <button class="filter-tab" data-filter="cleared" role="tab" aria-selected="false">
+          <button type="button" class="filter-tab" data-filter="cleared" role="tab" aria-selected="false" aria-controls="patient-list" tabindex="-1">
             Cleared <span id="tab-cleared-count" class="tab-badge badge-emerald">0</span>
           </button>
         </div>
         <div class="search-wrap">
-          <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <label for="search-input" class="visually-hidden">Filter patients by name, diagnosis, or total amount</label>
+          <svg aria-hidden="true" class="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
@@ -200,17 +205,17 @@
       </section>
 
       <!-- Patient Preview List -->
-      <section id="patient-list" class="patient-list" aria-label="Detected patients"></section>
+      <section id="patient-list" class="patient-list" role="tabpanel" aria-label="Detected patients"></section>
 
       <!-- Footer -->
       <footer class="footer">
         <span id="footer-meta" class="footer-meta">0 pages</span>
         <div class="footer-actions">
-          <button id="btn-nodiag-word" class="btn-ghost-word" title="Convert No Diagnosis patients 1:1 to Microsoft Word (.docx)" disabled>
+          <button id="btn-nodiag-word" type="button" class="btn-ghost-word" title="Convert No Diagnosis patients 1:1 to Microsoft Word (.docx)" disabled>
             No Diag → Word
           </button>
-          <button id="btn-copy-list" class="btn-ghost" title="Copy filtered patient list">Copy List</button>
-          <button id="btn-export-csv" class="btn-ghost" title="Download filtered patients as CSV">CSV</button>
+          <button id="btn-copy-list" type="button" class="btn-ghost" title="Copy filtered patient list">Copy List</button>
+          <button id="btn-export-csv" type="button" class="btn-ghost" title="Download filtered patients as CSV">CSV</button>
         </div>
       </footer>
     </main>

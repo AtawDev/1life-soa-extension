@@ -20,6 +20,8 @@ const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 function escapeXml(str) {
   return String(str ?? '')
+    // Strip illegal XML 1.0 control characters so Word never rejects malformed PDF glyphs
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -1310,10 +1312,17 @@ function buildSectionPrXml(widthPt, heightPt) {
   const wTwips = ptToTwip(widthPt);
   const hTwips = ptToTwip(heightPt);
   const orient = widthPt > heightPt ? ' w:orient="landscape"' : '';
+  // Every shape, image, and textbox is anchored with relativeFrom="page", so page margins
+  // never shift visual layout. Use Word's standard Normal margins (1" = 1440 twips,
+  // 0.5" = 720 twips header/footer) so Word does not show the "Your margins are pretty small"
+  // printable-area warning when printing.
+  const marginX = Math.min(1440, Math.max(0, Math.floor((wTwips - 720) / 4)));
+  const marginY = Math.min(1440, Math.max(0, Math.floor((hTwips - 720) / 4)));
+  const hfMargin = Math.min(720, marginY);
   return (
     `<w:sectPr>` +
     `<w:pgSz w:w="${wTwips}" w:h="${hTwips}"${orient}/>` +
-    `<w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/>` +
+    `<w:pgMar w:top="${marginY}" w:right="${marginX}" w:bottom="${marginY}" w:left="${marginX}" w:header="${hfMargin}" w:footer="${hfMargin}" w:gutter="0"/>` +
     `</w:sectPr>`
   );
 }

@@ -3,6 +3,16 @@
 *.docx
 *.doc
 *.csv
+*.xlsx
+*.xls
+
+# Extension packages, signing keys, and secrets
+*.zip
+*.crx
+*.pem
+.env
+.env.*
+dist/
 
 # OS / Editor files
 .DS_Store

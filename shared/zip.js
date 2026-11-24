@@ -44,7 +44,10 @@ async function deflateRaw(bytes) {
   try {
     const cs = new CompressionStream('deflate-raw');
     const writer = cs.writable.getWriter();
-    const writePromise = writer.write(bytes).then(() => writer.close());
+    const writePromise = (async () => {
+      await writer.write(bytes);
+      await writer.close();
+    })();
     const chunks = [];
     const reader = cs.readable.getReader();
     let total = 0;
